@@ -1,0 +1,11 @@
+allowBuilds:
+  '@firebase/util': false
+  '@parcel/watcher': false
+  bcrypt: true
+  esbuild: true
+  msgpackr-extract: true
+  protobufjs: false
+  puppeteer: true
+  rebrowser-puppeteer: true
+  sharp: true
+  workerd: false

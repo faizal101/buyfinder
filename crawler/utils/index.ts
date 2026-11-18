@@ -119,6 +119,9 @@ export async function getProxyList () {
 
 export async function getProxyArgsForBrowser (shop: string, browserOptions: LaunchOptions, figure?: Figure) {
   const shopInfo = shops[shop]
+
+  // No proxy configured (e.g. local dev): always use our own IP
+  if (!process.env.PROXY_SERVER) return browserOptions
   
   if (shopInfo.useProxy === undefined || shopInfo.useProxy === true) {
     const ownIpIsInUseRedisKey = `ownIp_${shop}`
@@ -314,7 +317,7 @@ export function getAPIOptions (url: string, shop: Shop, shopCookies?: Cookie[], 
     }
   }
 
-  if (shop.useProxy) {
+  if (shop.useProxy && process.env.PROXY_SERVER) {
     const httpsAgent = new HttpsProxyAgent(`http://${process.env.PROXY_SERVER || '0.0.0.0'}:${process.env.PROXY_PORT || '80'}`)
 
     options.httpsAgent = httpsAgent

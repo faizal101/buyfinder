@@ -1,0 +1,4 @@
+{
+  "watch": ["crawler", "api", "data", "types", "mixins"],
+  "ext": "ts,json"
+}

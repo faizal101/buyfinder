@@ -102,7 +102,8 @@ app.post('/getListings', async (req: Request, res: Response) => {
 
       // console.log('Current local page count:', localPageCount)
 
-      if (localPageCount > 18) data.useCloud = true
+      // Offload to the (Firebase) cloud crawler only when it's configured
+      if (localPageCount > 18 && process.env.FIREBASE_FUNCTIONS_TOKEN) data.useCloud = true
 
       const newJob = await Job.create(queue, shop, data, {
         priority: data.priority || 1
