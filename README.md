@@ -24,7 +24,7 @@ pnpm index-figures               # creates the Elasticsearch "figures" index (Ct
 pnpm dev                         # Next.js on :3000, crawler API on :8000, BullMQ worker
 ```
 
-Open http://localhost:3000 and paste an MFC item link (e.g. `https://myfigurecollection.net/item/663834`) or a JAN barcode into the search bar to add a figure; its page will then crawl the shops.
+Open http://localhost:3000 and paste an MFC item link or a JAN barcode into the search bar to add a figure; its page will then crawl the shops.
 
 `pnpm services down|status|logs <mongo|redis|elastic>|nuke` manages the containers (`nuke` deletes the data too).
 

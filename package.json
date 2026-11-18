@@ -10,6 +10,7 @@
     "dev": "concurrently -n crawler,worker,next -c blue,magenta,green \"pnpm run crawler-dev\" \"pnpm run worker-dev\" \"next dev\"",
     "services": "./scripts/services.sh",
     "index-figures": "ts-node ./scripts/indexFigures.ts",
+    "dev-user": "ts-node ./scripts/createDevUser.ts",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
