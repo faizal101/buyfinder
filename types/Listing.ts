@@ -23,10 +23,11 @@ export type Listing = {
   updatedAt?: Date
 }
 
-export type ListingsByShop = [string, Listing[], number | null, number?] // [shop, listings, nextSearch (timestamp), lastSearch (timestamp)]
+export type ListingsByShop = [string, Listing[], number | null, number?, boolean?] // [shop, listings, nextSearch (timestamp), lastSearch (timestamp), isRateLimited (Cloudflare limit hit, results may be incomplete)]
 
 export interface CachedListings {
   listings: Listing[]
   lastSearch?: number
   nextSearch: number | null
+  isRateLimited?: boolean
 }

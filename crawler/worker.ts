@@ -4,6 +4,7 @@ import { Job, Worker, WorkerOptions } from 'bullmq'
 import dotenv from 'dotenv'
 import { FigureWorkerJob, ListingWorkerJob, MfcLinkWorkerJob, WorkerJob } from '../types/WorkerJob'
 import { UnparsedListing, checkTitle, isBlacklisted, getMfcListings, getSearches, updatePrice, isRightItem, openBrowser, getPageContentFromCloud, getOriginAltNames, getCharAltNames, cleanup, getResultsFromScript, parseAPIResults, getAPIResults, getPageContentFromCloudflare } from './utils'
+import { CloudflareRateLimitError, markCloudflareRateLimited } from './utils/cloudflareLimiter'
 import getPageContent from './utils/getPageContent'
 import prepareBrowserPage from './utils/prepareBrowserPage'
 import getResults from './utils'
@@ -81,6 +82,7 @@ import figureReleaseDate from '../api/utils/figureReleaseDateForComparison'
     let timeout: NodeJS.Timeout | null = null
     let page: Page | null = null
     let errorOccured: boolean = false
+    let cloudflareRateLimited: boolean = false
 
     let results: UnparsedListing[] = []
 
@@ -506,6 +508,12 @@ import figureReleaseDate from '../api/utils/figureReleaseDateForComparison'
                   } catch (error) {
                     console.error(`Error when trying to get page content from cloudflare:`, error)
 
+                    if (error instanceof CloudflareRateLimitError) {
+                      cloudflareRateLimited = true
+
+                      await markCloudflareRateLimited(figure._id.toString(), job.data.shop)
+                    }
+
                     throw new Error('Error when trying to get page content')
                   }
                 } else if (job.data.useCloud) {
@@ -605,6 +613,8 @@ import figureReleaseDate from '../api/utils/figureReleaseDateForComparison'
           } catch (error) {
             errorOccured = true
 
+            if (cloudflareRateLimited) break
+
             continue
           }
 
@@ -617,6 +627,8 @@ import figureReleaseDate from '../api/utils/figureReleaseDateForComparison'
               await handleGetPageContent(searchUrl, shop.retryWithRoute, shop.searchRouteAppend)
             } catch (error) {
               errorOccured = true
+
+              if (cloudflareRateLimited) break
 
               continue
             }
@@ -679,6 +691,8 @@ import figureReleaseDate from '../api/utils/figureReleaseDateForComparison'
                   pageContent = (await getPageContentFromCloudflare(result.url, shop))[0]
                 } catch (error) {
                   console.error(`Error when trying to get page content from cloudflare:`, error)
+
+                  if (error instanceof CloudflareRateLimitError) await markCloudflareRateLimited(figure._id.toString(), job.data.shop)
 
                   throw new Error('Error when trying to get page content from cloudflare')
                 }
@@ -873,6 +887,16 @@ import figureReleaseDate from '../api/utils/figureReleaseDateForComparison'
         try {
           pageContent = (await getPageContentFromCloudflare(listing.url, shopInfo))[0]
         } catch (error: any) {
+          if (error instanceof CloudflareRateLimitError) {
+            // Couldn't re-check it, so keep the listing as is and let the UI know it may be out of date
+            // (failing the job would make the API retry it in a loop and drop the listing).
+            console.error(`Cloudflare rate limit hit while checking listing ${listing.url}, keeping it unchecked.`)
+
+            if (figure) await markCloudflareRateLimited(figure._id.toString(), shop)
+
+            return listing
+          }
+
           // await page?.screenshot({
           //   fullPage: true,
           //   path: `./crawler/screenshots/${job.data.shop}-${error.message.replaceAll(/[^\w\-\s]/g, '')}.png`

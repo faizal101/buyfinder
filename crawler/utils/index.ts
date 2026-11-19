@@ -33,6 +33,7 @@ import browserOptions from './browserOptions'
 import { spawn } from 'child_process'
 import { barcodeRegex } from '../../mixins/barcodeRegex'
 import { COMMON_VERSIONS } from '../../data/commonVersions'
+import { withCloudflareSlot, CloudflareRateLimitError } from './cloudflareLimiter'
 
 export interface UnparsedListing {
   id: string
@@ -349,7 +350,7 @@ export async function getPageContentFromCloudflare(url: string, shop: Shop) {
   const account_id = process.env.CLOUDFLARE_ACCOUNT_ID || ''
 
   const client = new Cloudflare({ apiToken })
-  const content = await client.browserRendering.content.create({
+  const content = await withCloudflareSlot(() => client.browserRendering.content.create({
     account_id,
     url,
     gotoOptions: {
@@ -369,6 +370,10 @@ export async function getPageContentFromCloudflare(url: string, shop: Shop) {
     })),
     rejectResourceTypes: ["image", "media", "font", "stylesheet"],
     rejectRequestPattern: ["/^.*\\.(css)"]
+  })).catch(error => {
+    if (error instanceof Cloudflare.RateLimitError) throw new CloudflareRateLimitError()
+
+    throw error
   })
   const pageContents = [content]
 

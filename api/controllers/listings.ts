@@ -13,6 +13,7 @@ import ShopSearches from '../models/ShopSearch'
 import redis from '../utils/redisClient'
 import getListingsHelper from '../utils/getListings'
 import { getSearches } from "../../crawler/utils"
+import { wasCloudflareRateLimited } from "../../crawler/utils/cloudflareLimiter"
 import { nanoid } from 'nanoid'
 import { User } from '../../types/User'
 import { SearchLanguages } from "../../types/Shops"
@@ -23,6 +24,10 @@ import PricePoint from "../models/PricePoint"
 import NoHits from "../models/NoHit"
 
 connectDB()
+
+// When a Cloudflare limit cut a search short, allow searching that shop again after this long
+// instead of keeping the incomplete results cached for the usual duration.
+const RATE_LIMITED_RETRY_AFTER_MS = 1000 * 60 * 5
 
 const sortPrice = (priceA: number, priceB: number) => {
   return priceA === 0 || priceB === 0 ? priceB - priceA : priceA - priceB
@@ -54,7 +59,7 @@ export async function getCachedListings(_id: string) {
         })
       const nextSearch = cachedListings.nextSearch === null ? null : cachedListings.nextSearch || (Date.now() + (await redis.ttl(key) || 0) * 1000)
       const lastSearch = cachedListings.lastSearch
-      const listingsByShop: ListingsByShop = [shop, listings, nextSearch, lastSearch]
+      const listingsByShop: ListingsByShop = [shop, listings, nextSearch, lastSearch, !!cachedListings.isRateLimited]
 
       listingsByShops.push(listingsByShop)
     }
@@ -110,7 +115,7 @@ export async function getListings(shop: string, _id: string, ip?: string, user?:
       const lastSearch = cachedListings.lastSearch
       const now = Date.now()
 
-      if (nextSearch === null || (!!nextSearch && nextSearch > now)) return [shop, listings, nextSearch, lastSearch]
+      if (nextSearch === null || (!!nextSearch && nextSearch > now)) return [shop, listings, nextSearch, lastSearch, !!cachedListings.isRateLimited]
     }
 
     if (ip !== 'admin') {
@@ -132,21 +137,28 @@ export async function getListings(shop: string, _id: string, ip?: string, user?:
 
     if (!(await shopCanBeSearched(figure, shop))) return [shop, [], null]
 
+    const searchStartedAt = Date.now()
+
     listings = await getListingsHelper(figure, shop, undefined, undefined, undefined, testMode)
 
     // console.log(`Found listings for ${_id} in ${shop}:`, listings)
 
+    // The crawler job may run under the mirror shop's name, so check both
+    const isRateLimited = await wasCloudflareRateLimited(_id, [...new Set([shop, shops[shop].mirrorShop || shop])], searchStartedAt)
     const expirationTime = getListingCacheExpirationTime(shop)
     const lastSearch = Date.now()
-    const nextSearch = lastSearch + 1000 * expirationTime
+    const nextSearch = isRateLimited ? lastSearch + RATE_LIMITED_RETRY_AFTER_MS : lastSearch + 1000 * expirationTime
+
+    if (isRateLimited) console.error(`Cloudflare rate limit hit while searching figure ${_id} in ${shop}, results may be incomplete.`)
 
     await redis.set(key, JSON.stringify({
       listings: listings || [],
       nextSearch,
-      lastSearch
+      lastSearch,
+      isRateLimited
     }))
 
-    if (listings === null) return [shop, [], nextSearch, lastSearch]
+    if (listings === null) return [shop, [], nextSearch, lastSearch, isRateLimited]
 
     const listingsToCheckRedisKey = `listingsToCheckByShop_${_id}`
     const prevListingsByShop: { [key: string]: string[] } = JSON.parse(await redis.get(listingsToCheckRedisKey) || '{}')
@@ -160,7 +172,7 @@ export async function getListings(shop: string, _id: string, ip?: string, user?:
 
     // console.log(`${listings.length} listings added to the queue and will be checked in 5 minutes`)
 
-    return [shop, listings, nextSearch, lastSearch]
+    return [shop, listings, nextSearch, lastSearch, isRateLimited]
   } catch (error) {
     console.error("Couldn't fetch listings for figure", _id, "in shop", shop, error)
 

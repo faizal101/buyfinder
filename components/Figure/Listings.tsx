@@ -96,6 +96,13 @@ export default function Listings ({
       !loadingShops.map(([loadingShop]) => loadingShop).includes(shop)
     )
   }), [JSON.stringify(searchableShops), JSON.stringify(sortedListingsByShop), JSON.stringify(loadingShops), JSON.stringify(shopsToRefresh)])
+  const rateLimitedShops = useMemo(() => {
+    const loading = loadingShops.map(([loadingShop]) => loadingShop)
+
+    return listingsByShops
+      .filter(([shop, listings, nextSearch, lastSearch, isRateLimited]) => isRateLimited && searchableShops.includes(shop) && !loading.includes(shop))
+      .map(([shop]) => shop)
+  }, [JSON.stringify(listingsByShops), JSON.stringify(searchableShops), JSON.stringify(loadingShops)])
   const nextShopToCheck = shopsToCheck[0] || null
   const now = Date.now()
   const canRefreshShops = listingsByShops.filter(([shop, listings, nextSearch]) => {
@@ -279,6 +286,14 @@ export default function Listings ({
             <Notice type="warning" fullWidth>
               The server is currently under heavy load, searches might take a while to complete or even fail. <br />
               Consider starting a search later.
+            </Notice>
+          )
+        }
+        {
+          rateLimitedShops.length > 0 && (
+            <Notice type="warning" fullWidth>
+              Cloudflare Worker usage limit while searching {rateLimitedShops.map(shop => shops[shop].name).join(', ')}, so results may be missing or incomplete. <br />
+              Try refreshing {rateLimitedShops.length > 1 ? 'those shops' : 'that shop'} in a few minutes.
             </Notice>
           )
         }
